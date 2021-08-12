@@ -6,28 +6,47 @@ using UnityEngine.UI;
 
 public class MainMenu : MonoBehaviour
 {
-    [Header("Interactibles")]
-    [SerializeField] private GameObject playButton;
+    [Header("Buttons")]
+    [SerializeField] private GameObject hostGameButton;
+    [SerializeField] private GameObject joinGameButton;
+    [SerializeField] private GameObject hostButton;
+    [SerializeField] private GameObject joinButton;
     [SerializeField] private GameObject settingsButton;
     [SerializeField] private GameObject quitButton;
     [SerializeField] private GameObject backButton;
-    
-    [Header("Panels")]
-    [SerializeField] private RectTransform menuPanelRectTransform;
-    [SerializeField] private GameObject settingsMenuPanel;
 
+    [Header("Panels")]
+    [SerializeField] private GameObject hostPanel;
+    [SerializeField] private GameObject joinPanel;
+    [SerializeField] private GameObject settingsPanel;
+    [SerializeField] private GameObject lobbyPanel;
+    [SerializeField] private Text lobbyTitleText;
+    [SerializeField] private GameObject currentPlayerPanel;
+    [SerializeField] private GameObject playerStatusPrefab;
+
+    [Header("Settings Panel")]
     [SerializeField] private Dropdown resolutionDropdown;
     [SerializeField] private Dropdown windowDropdown;
 
-    private enum MenuState { MainMenu, SettingsMenu, Lobby}
+    [Header("Input Fields")]
+    [SerializeField] private InputField hostServerPort;
+    [SerializeField] private InputField hostName;
+    [SerializeField] private InputField clientServerIP;
+    [SerializeField] private InputField clientServerPort;
+    [SerializeField] private InputField clientName;
+    [SerializeField] private InputField hostPlayerName;
+
+    bool serverStarted = false;
+    bool playerRepresentation = false;
+    private int connectionType = 0; // 1 = server, 2 = client
+
+    private enum MenuState { MainMenu, HostMenu, JoinMenu, SettingsMenu, LobbyMenu}
     private MenuState menuState;
-    //private float currentMenuWidth = 250;
 
     private void Start()
     {
-        //menuPanelRectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 250);
         menuState = MenuState.MainMenu;
-
+        
         // Set screen settings at the start
         Screen.SetResolution(1600, 900, false);
     }
@@ -39,65 +58,148 @@ public class MainMenu : MonoBehaviour
             case MenuState.MainMenu:
                 SetMainMenuLayout();
                 break;
+            case MenuState.HostMenu:
+                SetHostMenuLayout();
+                break;
+            case MenuState.JoinMenu:
+                SetJoinMenuLayout();
+                break;
             case MenuState.SettingsMenu:
                 SetSettingsMenuLayout();
                 break;
-            case MenuState.Lobby:
-                SetPlayMenuLayout();
+            case MenuState.LobbyMenu:
+                SetLobbyMenuLayout();
                 break;
             default:
                 break;
         }
+
+        // Close server if you back out of game lobby
+        if (connectionType == 1 && menuState == MenuState.MainMenu)
+        {
+            GameObject server = GameObject.Find("Server");
+            server.GetComponent<Server>().CloseServer();
+            Destroy(server);
+            serverStarted = false;
+
+            Debug.Log("Server chickened out...");
+        }
+
+        // Delte client from connected clients on server if back out of game lobby
+        if (connectionType == 2 && menuState == MenuState.MainMenu)
+        {
+            GameObject client = GameObject.Find("Client");
+            client.GetComponent<Client>().DisconnectClient();
+            Destroy(client);
+            serverStarted = false;
+        }
     }
 
-    private void SetPlayMenuLayout()
+    #region Buttons
+    public void HostGameButton()
     {
-        playButton.SetActive(false);
-        settingsButton.SetActive(false);
-        quitButton.SetActive(false);
-        backButton.SetActive(true);
+        menuState = MenuState.HostMenu;
     }
 
-    private void SetSettingsMenuLayout()
+    public void JoinGameButton()
     {
-        //currentMenuWidth = Mathf.Lerp(currentMenuWidth, 350, Time.deltaTime * 10);
-        //menuPanelRectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, currentMenuWidth);
-        //menuPanelRectTransform.sizeDelta = new Vector2(currentMenuWidth, 0);
-
-        settingsMenuPanel.SetActive(true);
-        playButton.SetActive(false);
-        settingsButton.SetActive(false);
-        quitButton.SetActive(false);
-        backButton.SetActive(true);
+        menuState = MenuState.JoinMenu;
     }
 
-    private void SetMainMenuLayout()
+    public void ClassGunnerButton()
     {
-        //currentMenuWidth = Mathf.Lerp(currentMenuWidth, 250, Time.deltaTime * 10);
-        //menuPanelRectTransform.sizeDelta = new Vector2(currentMenuWidth, 0);
-
-        playButton.SetActive(true);
-        settingsButton.SetActive(true);
-        quitButton.SetActive(true);
-        backButton.SetActive(false);
-        settingsMenuPanel.SetActive(false);
+        GameObject client = GameObject.Find("Client");
+        client.GetComponent<Client>().SetPlayerClass(PlayerClass.Gunner);
     }
 
-    public void PlayButton()
+    public void ClassKnightButton()
     {
-        menuState = MenuState.Lobby;
+        GameObject client = GameObject.Find("Client");
+        client.GetComponent<Client>().SetPlayerClass(PlayerClass.Knight);
+    }
+
+    public void LobbyReadyButton()
+    {
+        GameObject client = GameObject.Find("Client");
+        client.GetComponent<Client>().SetPlayerReady();
+    }
+
+    public void HostServerButton()
+    {
+        // Create Server
+        GameObject serverObject = new GameObject("Server");
+        int serverPort = 0;
+
+        if (hostServerPort.text == "")
+        {
+            serverPort = Int32.Parse(hostServerPort.placeholder.GetComponent<Text>().text);
+        }
+        else
+        {
+            serverPort = Int32.Parse(hostServerPort.text);
+        }
+        serverObject.AddComponent<Server>().StartServer(serverPort);
+
+        hostPanel.SetActive(false);
+        lobbyPanel.SetActive(true);
+        serverStarted = true;
+        connectionType = 1; // connected as server
+        lobbyTitleText.text = "Lobby (Server)";
+
+        //Create Client
+        GameObject clientObject = new GameObject("Client");
+        string hostName = "";
+        // User name
+        if (clientName.text == "")
+            hostName = hostPlayerName.placeholder.GetComponent<Text>().text;
+        else
+            hostName = hostPlayerName.text;
+        clientObject.AddComponent<Client>().StartClient("127.0.0.1", serverPort, hostName);
+    }
+
+    public void JoinServerButton()
+    {
+        // Create Client
+        GameObject clientObject = new GameObject("Client");
+        int serverPort = 0;
+        string serverIP = "";
+        string userName = "";
+
+        // Server IP
+        if (clientServerIP.text == "")
+            serverIP = clientServerIP.placeholder.GetComponent<Text>().text;
+        else
+            serverIP = clientServerIP.text;
+
+        // Server port
+        if (clientServerPort.text == "")
+            serverPort = Int32.Parse(clientServerPort.placeholder.GetComponent<Text>().text);
+        else
+            serverPort = Int32.Parse(clientServerPort.text);
+
+        // User name
+        if (clientName.text == "")
+            userName = clientName.placeholder.GetComponent<Text>().text;
+        else
+            userName = clientName.text;
+
+        clientObject.AddComponent<Client>().StartClient(serverIP, serverPort, userName);
+        
+
+        hostPanel.SetActive(false);
+        lobbyPanel.SetActive(true);
+        connectionType = 2; // connected as client
+        lobbyTitleText.text = "Lobby (Client)";
     }
 
     public void SettingsButton()
     {
         menuState = MenuState.SettingsMenu;
-        
     }
 
     public void ResetMainMenu()
     {
         menuState = MenuState.MainMenu;
-        
     }
 
     public void QuitButton()
@@ -107,10 +209,69 @@ public class MainMenu : MonoBehaviour
 
     public void ApplyButton()
     {
+        // Screen settings
         string dropDownValue = resolutionDropdown.options[resolutionDropdown.value].text;
         string[] resolution = dropDownValue.Split('x');
         bool fullScreen = windowDropdown.value == 0 ? false : true;
 
         Screen.SetResolution(int.Parse(resolution[0]), int.Parse(resolution[1]), fullScreen);
     }
+    #endregion
+
+    #region LayoutFunctions
+    private void SetLobbyMenuLayout()
+    {
+        settingsButton.SetActive(false);
+        quitButton.SetActive(false);
+        backButton.SetActive(true);
+
+        lobbyPanel.SetActive(true);
+    }
+
+    private void SetSettingsMenuLayout()
+    {
+        settingsPanel.SetActive(true);
+        hostButton.SetActive(false);
+        joinButton.SetActive(false);
+        settingsButton.SetActive(false);
+        quitButton.SetActive(false);
+        backButton.SetActive(true);
+    }
+
+    private void SetMainMenuLayout()
+    {
+        hostButton.SetActive(true);
+        joinButton.SetActive(true);
+        settingsButton.SetActive(true);
+        quitButton.SetActive(true);
+        backButton.SetActive(false);
+
+        settingsPanel.SetActive(false);
+        lobbyPanel.SetActive(false);
+        hostPanel.SetActive(false);
+        joinPanel.SetActive(false);
+    }
+
+    private void SetHostMenuLayout()
+    {
+        hostPanel.SetActive(true);
+
+        hostGameButton.SetActive(false);
+        joinGameButton.SetActive(false);
+        settingsButton.SetActive(false);
+        quitButton.SetActive(false);
+        backButton.SetActive(true);
+    }
+
+    private void SetJoinMenuLayout()
+    {
+        joinPanel.SetActive(true);
+
+        hostGameButton.SetActive(false);
+        joinGameButton.SetActive(false);
+        settingsButton.SetActive(false);
+        quitButton.SetActive(false);
+        backButton.SetActive(true);
+    }
+    #endregion
 }
